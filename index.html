@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>🎾 Tennis Ace — Rally Master</title>
+<meta name="description" content="Arcade tennis! Drag your racket, keep the rally alive and beat the AI. 5 difficulty levels.">
+<script src="https://sdk.crazygames.com/crazygames-sdk-v3.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(circle at 50% 0%, #12314f 0%, #0a1b2c 55%, #06111d 100%);
+    color: #e8f0ff;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100dvh; overflow: hidden; user-select: none;
+  }
+  #app { width: min(980px, 100vw, calc((100dvh - 104px) * 1.5)); padding: 6px; display: flex; flex-direction: column; gap: 6px; }
+
+  /* HUD */
+  #hud {
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 14px; padding: 6px 10px; backdrop-filter: blur(6px);
+  }
+  .side { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: clamp(13px, 2.4vw, 18px); }
+  .side.right { justify-content: flex-end; }
+  .dot { width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 10px currentColor; }
+  .you .dot { background: #4cc9f0; color: #4cc9f0; }
+  .cpu .dot { background: #ff6b6b; color: #ff6b6b; }
+  #scoreBox {
+    font-weight: 900; font-size: clamp(18px, 3.6vw, 28px); letter-spacing: 2px;
+    background: #0c2033; border: 2px solid #2a4a6b; border-radius: 10px; padding: 2px 14px;
+    font-variant-numeric: tabular-nums;
+  }
+  #scoreBox .sep { color: #5b7a9b; margin: 0 6px; }
+  #comboBox { font-size: clamp(11px, 2vw, 14px); color: #ffd166; font-weight: 800; text-align: center; min-height: 16px; }
+  #pauseBtn {
+    background: #1c3550; color: #cfe3ff; border: 1px solid #2f5478; border-radius: 10px;
+    padding: 6px 12px; font-weight: 800; cursor: pointer; font-family: inherit; font-size: 13px;
+  }
+
+  /* Canvas */
+  #gameWrap { position: relative; border-radius: 16px; overflow: hidden; box-shadow: 0 18px 40px rgba(0,0,0,0.5); }
+  canvas { display: block; width: 100%; height: auto; touch-action: none; cursor: crosshair; }
+
+  /* Overlays */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(3, 12, 22, 0.78);
+    display: flex; align-items: center; justify-content: center; padding: 14px; z-index: 40;
+    backdrop-filter: blur(3px);
+  }
+  .overlay.hidden { display: none; }
+  .card {
+    background: linear-gradient(180deg, #12283d, #0b1c2c);
+    border: 1px solid #2c4f72; border-radius: 22px; padding: 20px;
+    width: 100%; max-width: 540px; text-align: center;
+    box-shadow: 0 16px 0 rgba(0,0,0,0.35), 0 0 80px rgba(76,201,240,0.15);
+    max-height: 94dvh; overflow-y: auto;
+  }
+  .card h1 { font-size: clamp(26px, 6vw, 40px); margin-bottom: 4px; }
+  .card h2 { font-size: clamp(22px, 5vw, 32px); margin-bottom: 8px; }
+  .card .sub { color: #9fb6d4; font-size: clamp(13px, 2.6vw, 15px); margin-bottom: 12px; }
+  .info {
+    text-align: left; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 14px; padding: 12px 14px; font-size: clamp(12px, 2.4vw, 14px);
+    color: #cfe0f5; line-height: 1.8; margin-bottom: 12px;
+  }
+  .diffRow { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .diffBtn {
+    flex: 1 1 0; min-width: 92px; background: #16324c; color: #cfe3ff; border: 2px solid #2c4f72;
+    border-radius: 12px; padding: 8px 4px; font-family: inherit; font-weight: 800;
+    font-size: clamp(11px, 2vw, 13px); cursor: pointer; transition: all 0.15s ease;
+  }
+  .diffBtn.on { background: #ffb347; color: #1b1206; border-color: #ffd166; box-shadow: 0 0 16px rgba(255,179,71,0.4); }
+  #diffLbl { font-size: 13px; color: #ffd166; font-weight: 700; margin-bottom: 10px; min-height: 18px; }
+  .btn {
+    width: 100%; border: none; border-radius: 14px; padding: 14px;
+    font-family: inherit; font-weight: 900; font-size: clamp(15px, 3vw, 18px); color: #06222e;
+    background: linear-gradient(180deg, #7bf1a8, #3ecf7d); box-shadow: 0 5px 0 #1f8a4c;
+    cursor: pointer; margin-top: 8px; transition: transform 0.08s ease, box-shadow 0.08s ease;
+  }
+  .btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #1f8a4c; }
+  .btn.blue { background: linear-gradient(180deg, #7ed6ff, #3fa9f5); box-shadow: 0 5px 0 #186699; color: #04202e; }
+  .btn.gold { background: linear-gradient(180deg, #ffe08a, #ffb347); box-shadow: 0 5px 0 #9c6a12; color: #2b1b02; }
+  .btn.gray { background: linear-gradient(180deg, #5b7a9b, #3c5a78); box-shadow: 0 5px 0 #23394d; color: #e8f0ff; }
+  #bannerZoneMenu, #bannerZoneEnd { margin: 10px auto 0; min-height: 60px; width: 100%; max-width: 320px; }
+  @media (max-width: 520px) {
+    .diffBtn { min-width: 62px; }
+    #hud { padding: 4px 6px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="hud">
+    <div class="side you"><span class="dot"></span> YOU</div>
+    <div style="text-align:center">
+      <div id="scoreBox"><span id="pScore">0</span><span class="sep">:</span><span id="aScore">0</span></div>
+      <div id="comboBox"></div>
+    </div>
+    <div class="side right">CPU <span class="dot"></span>
+      <button id="pauseBtn">⏸</button>
+    </div>
+  </div>
+  <div id="gameWrap"><canvas id="game"></canvas></div>
+</div>
+
+<!-- MENU -->
+<div class="overlay" id="menuScreen">
+  <div class="card">
+    <h1>🎾 TENNIS ACE</h1>
+    <div class="sub">Rally Master — keep the ball alive and outplay the AI!</div>
+    <div class="info">
+      🖱️ <b>Move</b> your mouse / finger to control the racket (arrow keys also work)<br>
+      🎾 Your racket <b>hits automatically</b> when the ball comes close<br>
+      ✨ Hit with the racket <b>center</b> for a PERFECT power shot<br>
+      🔥 Long rallies make the ball faster — stay calm!<br>
+      🏆 First to <b>7 points</b> wins the match
+    </div>
+    <div class="diffRow" id="diffRow"></div>
+    <div id="diffLbl"></div>
+    <div class="sub" id="menuBest"></div>
+    <button class="btn gold" id="startAdBtn">📺 Watch Ad · Start with +2 points</button>
+    <button class="btn" id="playBtn">▶ PLAY</button>
+    <div id="bannerZoneMenu"></div>
+  </div>
+</div>
+
+<!-- MATCH END -->
+<div class="overlay hidden" id="endScreen">
+  <div class="card">
+    <h2 id="endTitle">🏆 MATCH WON!</h2>
+    <div class="sub" id="endStats"></div>
+    <div class="info" style="text-align:center" id="endInfo"></div>
+    <button class="btn gold" id="rematchAdBtn">📺 Watch Ad · Rematch with +2 points</button>
+    <button class="btn" id="againBtn">🔁 Play Again</button>
+    <div id="bannerZoneEnd"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ═══════════ CRAZYGAMES SDK WRAPPER ═══════════ */
+let sdk = null, sdkReady = false, adPlaying = false, muted = false;
+const $ = (id) => document.getElementById(id);
+
+async function initSDK() {
+  try {
+    if (window.CrazyGames && window.CrazyGames.SDK) {
+      await window.CrazyGames.SDK.init();
+      sdk = window.CrazyGames.SDK;
+      sdkReady = (sdk.environment !== 'disabled');
+      try { sdk.game.loadingStart(); } catch (e) {}
+      try { sdk.game.loadingStop(); } catch (e) {}
+      try {
+        muted = !!(sdk.game.settings && sdk.game.settings.muteAudio);
+        if (sdk.game.addSettingsChangeListener) {
+          sdk.game.addSettingsChangeListener(s => { muted = !!(s && s.muteAudio); });
+        }
+      } catch (e) {}
+    }
+  } catch (e) { /* SDK yoksa oyun yine çalışır */ }
+  if (!sdkReady) {
+    const a = $('startAdBtn'); if (a) a.style.display = 'none';
+    const b = $('rematchAdBtn'); if (b) b.style.display = 'none';
+  } else {
+    showBanner('bannerZoneMenu');
+  }
+}
+function cg(fn, arg) { if (sdkReady && sdk.game && sdk.game[fn]) { try { sdk.game[fn](arg); } catch (e) {} } }
+const gameplayStart = () => cg('gameplayStart');
+const gameplayStop = () => cg('gameplayStop');
+const happytime = () => cg('happytime');
+const reportProgress = (p) => cg('reportGameCompletedPercentage', Math.max(0, Math.min(100, p)));
+const setContext = (o) => cg('setGameContext', o);
+
+function requestAd(type, onFinished) {
+  if (!sdkReady || !sdk.ad) return false;
+  try {
+    sdk.ad.requestAd(type, {
+      adStarted: () => { adPlaying = true; },
+      adFinished: () => { adPlaying = false; onFinished && onFinished(); },
+      adError: () => { adPlaying = false; onFinished && onFinished(true); }
+    });
+    return true;
+  } catch (e) { return false; }
+}
+async function showBanner(zoneId) {
+  if (!sdkReady || !sdk.banner) return;
+  try {
+    if (sdk.banner.clearAllBanners) sdk.banner.clearAllBanners();
+    await sdk.banner.requestResponsiveBanner(zoneId);
+  } catch (e) { /* unfilled */ }
+}
+function hideBanners() {
+  if (!sdkReady || !sdk.banner) return;
+  try { sdk.banner.clearAllBanners(); } catch (e) {}
+}
+
+/* ═══════════ SES ═══════════ */
+let audioCtx = null;
+function initAudio() { if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } }
+function beep(freq, dur, type, vol) {
+  if (!audioCtx || muted) return;
+  try {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = type || 'sine'; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol || 0.05, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + (dur || 0.1));
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + (dur || 0.1));
+  } catch (e) {}
+}
+
+/* ═══════════ SAHA & SABİTLER ═══════════ */
+const W = 900, H = 600;
+const CX0 = 140, CX1 = 760;      // saha yan çizgileri
+const CY0 = 46, CY1 = 554;       // arka çizgiler
+const NET_Y = 300;
+const P_ZONE = [330, 540];       // oyuncu bölgesi
+const A_ZONE = [62, 272];        // rakip bölgesi
+const RACKET_R = 30, HIT_R = 40, BALL_R = 9;
+const WIN_POINTS = 7;
+
+const DIFFS = [
+  { name: '1 · Rookie',  speed: 240, err: 85, ball: 400 },
+  { name: '2 · Amateur', speed: 290, err: 62, ball: 430 },
+  { name: '3 · Pro',     speed: 340, err: 42, ball: 460 },
+  { name: '4 · Master',  speed: 390, err: 26, ball: 490 },
+  { name: '5 · Legend',  speed: 450, err: 12, ball: 520 }
+];
+let diffIndex = 2;
+
+/* ═══════════ DURUM ═══════════ */
+const canvas = $('game');
+const ctx = canvas.getContext('2d');
+const DPR = Math.min(2, window.devicePixelRatio || 1);
+canvas.width = W * DPR; canvas.height = H * DPR;
+canvas.style.aspectRatio = W + ' / ' + H;
+ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+let state = 'menu';           // 'menu' | 'serve' | 'rally' | 'point' | 'over' | 'paused'
+let prevState = 'rally';
+let pScore = 0, aScore = 0;
+let player = { x: 450, y: 470, vx: 0, swing: 0 };
+let ai = { x: 450, y: 110, vx: 0, swing: 0 };
+let ball = { x: 450, y: 470, vx: 0, vy: 0, z: 0, vz: 0, live: false };
+let serveSide = 'player';
+let serveTimer = 0;
+let pointTimer = 0;
+let rallyCount = 0, bestRally = 0, combo = 0;
+let ballSpeed = 430;
+let server = 'player';
+let particles = [], floaters = [];
+let keys = {};
+let pointerActive = false, pointerX = 450, pointerY = 470;
+let lastTime = 0, gameTime = 0;
+let lastMidgameAd = 0;
+let startBonusUsed = false, rematchBonusUsed = false;
+let flash = null;            // {text, color, t}
+let shake = 0;
+
+/* ═══════════ YARDIMCI ═══════════ */
+function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+function rand(a, b) { return a + Math.random() * (b - a); }
+
+function updateScoreHUD() {
+  $('pScore').textContent = pScore;
+  $('aScore').textContent = aScore;
+  $('comboBox').textContent = combo > 1 ? '🔥 COMBO x' + combo : '';
+}
+
+/* ═══════════ MAÇ AKIŞI ═══════════ */
+function startMatch(bonusPoints) {
+  initAudio();
+  pScore = bonusPoints || 0;
+  aScore = 0;
+  rallyCount = 0; combo = 0;
+  ballSpeed = DIFFS[diffIndex].ball;
+  server = 'player';
+  flash = null; shake = 0;
+  particles = []; floaters = [];
+  $('menuScreen').classList.add('hidden');
+  $('endScreen').classList.add('hidden');
+  hideBanners();
+  state = 'serve';
+  serveTimer = 1.0;
+  serveBall();
+  gameplayStart();
+  updateScoreHUD();
+  setContext({ difficulty: DIFFS[diffIndex].name, player: pScore, cpu: aScore });
+}
+function serveBall() {
+  ballSpeed = DIFFS[diffIndex].ball;
+  rallyCount = 0;
+  const fromPlayer = (server === 'player');
+  const sx = fromPlayer ? rand(CX0 + 80, CX1 - 80) : rand(CX0 + 80, CX1 - 80);
+  const sy = fromPlayer ? P_ZONE[1] - 20 : A_ZONE[0] + 20;
+  ball = { x: sx, y: sy, vx: 0, vy: 0, z: 0, vz: 0, live: false };
+  if (fromPlayer) player.x = sx;
+  else ai.x = sx;
+  serveTimer = 0.9;
+  state = 'serve';
+  updateScoreHUD();
+}
+function launchServe() {
+  const fromPlayer = (server === 'player');
+  const speed = DIFFS[diffIndex].ball;
+  ball.vx = rand(-110, 110);
+  ball.vy = fromPlayer ? -speed : speed;
+  ball.z = 26; ball.vz = 120;
+  ball.live = true;
+  state = 'rally';
+  beep(520, 0.07, 'triangle', 0.05);
+}
+
+function scorePoint(who) {
+  if (who === 'player') { pScore++; combo++; rallyCount = 0; flash = { text: 'POINT! 🎾', color: '#7bf1a8', t: 1.0 }; beep(880, 0.18, 'triangle', 0.07); }
+  else { aScore++; combo = 0; rallyCount = 0; flash = { text: 'CPU POINT', color: '#ff8fa3', t: 1.0 }; beep(180, 0.25, 'sawtooth', 0.06); }
+  saveBest();
+  updateScoreHUD();
+  state = 'point';
+  pointTimer = 1.1;
+  server = (who === 'player') ? 'cpu' : 'player'; // puanı alan servis atar
+  reportProgress(Math.max(pScore, aScore) / WIN_POINTS * 100);
+  setContext({ difficulty: DIFFS[diffIndex].name, player: pScore, cpu: aScore, rally: bestRally });
+}
+function afterPoint() {
+  if (pScore >= WIN_POINTS || aScore >= WIN_POINTS) { endMatch(); return; }
+  serveBall();
+}
+function endMatch() {
+  state = 'over';
+  gameplayStop();
+  hideBanners();
+  const won = pScore >= WIN_POINTS;
+  $('endTitle').textContent = won ? '🏆 YOU WIN!' : '💔 CPU WINS';
+  $('endStats').innerHTML = 'Final score <b>' + pScore + ' : ' + aScore + '</b> · Best rally: <b>' + bestRally + '</b>';
+  $('endInfo').innerHTML = won
+    ? 'Flawless tennis! 🎾 Your racket control is unreal.<br>Want a bigger challenge? Try a higher difficulty!'
+    : 'So close! The CPU was fast today.<br>Use the ad reward for a +2 point head start and take revenge! 💪';
+  rematchBonusUsed = false;
+  $('rematchAdBtn').style.display = '';
+  $('endScreen').classList.remove('hidden');
+  showBanner('bannerZoneEnd');
+  if (won) { happytime(); beep(990, 0.4, 'triangle', 0.09); reportProgress(100); }
+  else reportProgress(Math.round((pScore / WIN_POINTS) * 100));
+  maybeEndAd();
+}
+function maybeEndAd() {
+  if (!sdkReady) return;
+  const now = Date.now();
+  if (now - lastMidgameAd < 180000) return;
+  lastMidgameAd = now;
+  requestAd('midgame', () => {});
+}
+
+/* ═══════════ FİZİK & GÜNCELLEME ═══════════ */
+function hitBall(who, rx, ry) {
+  const d = DIFFS[diffIndex];
+  const dx = ball.x - rx;
+  const center = Math.max(0, 1 - Math.abs(dx) / HIT_R);
+  const perfect = center > 0.62;
+  const speed = Math.min(880, ballSpeed + 14 + (perfect ? 30 : 0));
+  ballSpeed = speed;
+  rallyCount++;
+  bestRally = Math.max(bestRally, rallyCount);
+
+  let targetOffset = 0;
+  if (who === 'player') {
+    // raketin içinden geçtiği yön: topun merkezden sapması
+    targetOffset = (dx / HIT_R) * 340 + rand(-40, 40);
+    targetOffset = clamp(targetOffset, -360, 360);
+    ball.vy = -speed;
+  } else {
+    // CPU hedefi: oyuncunun raketinden uzağa (hata payıyla)
+    const aimAway = (ball.x < 450 ? 1 : -1);
+    targetOffset = aimAway * (180 + Math.random() * 140) + rand(-d.err, d.err);
+    targetOffset = clamp(targetOffset, -380, 380);
+    ball.vy = speed;
+  }
+  const m = Math.hypot(targetOffset, speed);
+  ball.vx = targetOffset / m * speed;
+  ball.vy = (ball.vy < 0 ? -1 : 1) * Math.abs(speed / m * speed);
+  ball.z = 30; ball.vz = perfect ? 200 : 150;
+  ball.live = true;
+
+  if (who === 'player') {
+    combo = perfect ? combo + 1 : 0;
+    player.swing = 0.18;
+    if (perfect) {
+      floaters.push({ x: ball.x, y: ball.y - 30, text: 'PERFECT!', color: '#ffd166', t: 0.9 });
+      beep(1046, 0.12, 'triangle', 0.07);
+      shake = 4;
+    } else beep(700, 0.07, 'square', 0.04);
+  } else {
+    ai.swing = 0.18;
+    beep(420, 0.07, 'square', 0.04);
+  }
+  updateScoreHUD();
+  setContext({ difficulty: DIFFS[diffIndex].name, player: pScore, cpu: aScore, rally: rallyCount });
+}
+
+function update(dt) {
+  gameTime += dt;
+  // efektler her zaman
+  particles = particles.filter(p => (p.t -= dt) > 0);
+  floaters = floaters.filter(f => (f.t -= dt) > 0);
+  if (flash) { flash.t -= dt; if (flash.t <= 0) flash = null; }
+  if (shake > 0) shake = Math.max(0, shake - dt * 20);
+  if (player.swing > 0) player.swing -= dt;
+  if (ai.swing > 0) ai.swing -= dt;
+
+  const d = DIFFS[diffIndex];
+
+  // Oyuncu raketi: pointer veya tuşlar
+  if (pointerActive) {
+    player.x += (pointerX - player.x) * Math.min(1, dt * 18);
+    player.y += (pointerY - player.y) * Math.min(1, dt * 18);
+  } else {
+    const sp = 620;
+    if (keys['ArrowLeft'] || keys['a'] || keys['A']) player.x -= sp * dt;
+    if (keys['ArrowRight'] || keys['d'] || keys['D']) player.x += sp * dt;
+    if (keys['ArrowUp'] || keys['w'] || keys['W']) player.y -= sp * dt;
+    if (keys['ArrowDown'] || keys['s'] || keys['S']) player.y += sp * dt;
+  }
+  player.x = clamp(player.x, CX0 + 10, CX1 - 10);
+  player.y = clamp(player.y, P_ZONE[0], P_ZONE[1]);
+
+  if (state === 'paused' || adPlaying) return;
+
+  if (state === 'serve') {
+    serveTimer -= dt;
+    ball.x = server === 'player' ? player.x : ai.x;
+    ball.y = server === 'player' ? P_ZONE[1] - 18 : A_ZONE[0] + 18;
+    if (serveTimer <= 0) launchServe();
+    return;
+  }
+  if (state === 'point') {
+    pointTimer -= dt;
+    if (pointTimer <= 0) afterPoint();
+    return;
+  }
+  if (state !== 'rally') return;
+
+  // ── top fiziği ──
+  ball.x += ball.vx * dt;
+  ball.y += ball.vy * dt;
+  // z (yükseklik) — sadece görsel
+  if (ball.z > 0 || ball.vz > 0) {
+    ball.vz -= 620 * dt;
+    ball.z += ball.vz * dt;
+    if (ball.z < 0) { ball.z = 0; ball.vz = -ball.vz * 0.5; if (Math.abs(ball.vz) < 40) ball.vz = 0; }
+  }
+
+  // yan çizgiler: arkadaşça sekme (arcade)
+  if (ball.x < CX0 + BALL_R) { ball.x = CX0 + BALL_R; ball.vx = Math.abs(ball.vx); }
+  if (ball.x > CX1 - BALL_R) { ball.x = CX1 - BALL_R; ball.vx = -Math.abs(ball.vx); }
+
+  // raket çarpışmaları
+  if (ball.live) {
+    const dp = Math.hypot(ball.x - player.x, ball.y - player.y);
+    if (dp < RACKET_R + BALL_R + 2 && ball.vy > 0) hitBall('player', player.x, player.y);
+    const da = Math.hypot(ball.x - ai.x, ball.y - ai.y);
+    if (da < RACKET_R + BALL_R + 2 && ball.vy < 0) hitBall('cpu', ai.x, ai.y);
+  }
+
+  // sayı kontrolü
+  if (ball.y > CY1 + 24) { scorePoint('cpu'); return; }
+  if (ball.y < CY0 - 24) { scorePoint('player'); return; }
+
+  // ── CPU yapay zekâsı ──
+  if (ball.vy < 0) {
+    // top ona doğru geliyor: hedefi tahmin et
+    let t = (ai.y - ball.y) / ball.vy;
+    if (t < 0) t = 0;
+    let px = ball.x + ball.vx * t;
+    // yan duvar sekmesini hesaba kat
+    const span = CX1 - CX0 - 2 * BALL_R;
+    let rel = (px - (CX0 + BALL_R)) % (2 * span);
+    if (rel < 0) rel += 2 * span;
+    px = rel <= span ? CX0 + BALL_R + rel : CX1 - BALL_R - (rel - span);
+    const delta = clamp(px - ai.x, -d.speed * dt, d.speed * dt);
+    ai.x += delta;
+  } else {
+    // top oyuncuya gidiyor: merkeze dön
+    const delta = clamp(450 - ai.x, -d.speed * 0.4 * dt, d.speed * 0.4 * dt);
+    ai.x += delta;
+  }
+  ai.x = clamp(ai.x, CX0 + 10, CX1 - 10);
+  ai.y = clamp(ai.y + (A_ZONE[0] + 40 - ai.y) * dt * 2, A_ZONE[0], A_ZONE[1]);
+}
+
+/* ═══════════ ÇİZİM ═══════════ */
+function drawCourt() {
+  // arka plan / tribün
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#0b2136');
+  bg.addColorStop(1, '#071523');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // tribün noktaları
+  ctx.save();
+  ctx.globalAlpha = 0.18;
+  for (let i = 0; i < 70; i++) {
+    const x = (i * 137.5) % W;
+    const y = (i * 53.7) % (CY0 - 6);
+    ctx.fillStyle = i % 3 === 0 ? '#4cc9f0' : '#ffd166';
+    ctx.beginPath(); ctx.arc(x, y, 2.2, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.restore();
+
+  // saha
+  const courtGrad = ctx.createLinearGradient(CX0, CY0, CX0, CY1);
+  courtGrad.addColorStop(0, '#2f7d4a');
+  courtGrad.addColorStop(0.5, '#358a52');
+  courtGrad.addColorStop(1, '#2f7d4a');
+  ctx.fillStyle = courtGrad;
+  ctx.fillRect(CX0, CY0, CX1 - CX0, CY1 - CY0);
+
+  // dış kort (mavi) çerçeve
+  ctx.strokeStyle = '#1f5c8a';
+  ctx.lineWidth = 16;
+  ctx.strokeRect(CX0 - 26, CY0 - 26, (CX1 - CX0) + 52, (CY1 - CY0) + 52);
+
+  // beyaz çizgiler
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 3;
+  ctx.strokeRect(CX0, CY0, CX1 - CX0, CY1 - CY0);
+  // servis çizgileri
+  const s1 = CY0 + (CY1 - CY0) * 0.25;
+  const s2 = CY0 + (CY1 - CY0) * 0.75;
+  ctx.beginPath(); ctx.moveTo(CX0, s1); ctx.lineTo(CX1, s1); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(CX0, s2); ctx.lineTo(CX1, s2); ctx.stroke();
+  // orta servis çizgisi
+  ctx.beginPath(); ctx.moveTo(450, s1); ctx.lineTo(450, s2); ctx.stroke();
+  // orta işaretler
+  ctx.beginPath(); ctx.moveTo(450, CY0); ctx.lineTo(450, CY0 + 16); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(450, CY1); ctx.lineTo(450, CY1 - 16); ctx.stroke();
+
+  // file (orta) — 3D görünüm
+  ctx.save();
+  // gölge
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillRect(CX0, NET_Y + 2, CX1 - CX0, 10);
+  // file bandı
+  const netGrad = ctx.createLinearGradient(0, NET_Y - 12, 0, NET_Y + 12);
+  netGrad.addColorStop(0, 'rgba(255,255,255,0.5)');
+  netGrad.addColorStop(0.5, 'rgba(200,230,255,0.25)');
+  netGrad.addColorStop(1, 'rgba(255,255,255,0.4)');
+  ctx.fillStyle = netGrad;
+  ctx.fillRect(CX0 - 6, NET_Y - 12, (CX1 - CX0) + 12, 24);
+  // file deseni
+  ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.lineWidth = 1;
+  for (let x = CX0 - 6; x <= CX1 + 6; x += 9) {
+    ctx.beginPath(); ctx.moveTo(x, NET_Y - 12); ctx.lineTo(x, NET_Y + 12); ctx.stroke();
+  }
+  for (let y = NET_Y - 12; y <= NET_Y + 12; y += 8) {
+    ctx.beginPath(); ctx.moveTo(CX0 - 6, y); ctx.lineTo(CX1 + 6, y); ctx.stroke();
+  }
+  // üst bant
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(CX0 - 6, NET_Y - 13, (CX1 - CX0) + 12, 4);
+  ctx.restore();
+
+  // skor tabelası (saha üstü)
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath(); ctx.roundRect(360, 6, 180, 30, 8); ctx.fill();
+  ctx.fillStyle = '#e8f0ff';
+  ctx.font = 'bold 18px system-ui, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('YOU ' + pScore + ' : ' + aScore + ' CPU', 450, 21);
+  ctx.restore();
+}
+
+function drawRacket(x, y, color, swing, label) {
+  ctx.save();
+  // gölge
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.beginPath(); ctx.ellipse(x, y + 14, 24, 10, 0, 0, Math.PI * 2); ctx.fill();
+
+  const ang = swing > 0 ? Math.sin((0.18 - swing) * 24) * 0.6 : 0;
+  ctx.translate(x, y);
+  ctx.rotate(ang);
+
+  // raket sapı
+  ctx.strokeStyle = '#e8d5b5';
+  ctx.lineWidth = 5;
+  ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(0, 10); ctx.lineTo(0, 30); ctx.stroke();
+
+  // raket yüzü
+  ctx.fillStyle = color;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(0, -2, 17, 21, 0, 0, Math.PI * 2);
+  ctx.fill(); ctx.stroke();
+  // tel
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+  ctx.lineWidth = 1;
+  for (let i = -10; i <= 10; i += 7) {
+    ctx.beginPath(); ctx.moveTo(i, -20); ctx.lineTo(i, 16); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(-15, i); ctx.lineTo(15, i); ctx.stroke();
+  }
+  ctx.restore();
+
+  // oyuncu figürü (raketin arkasında)
+  ctx.save();
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath(); ctx.ellipse(x, y + 34, 16, 7, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(x, y + 30, 13, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#ffdcb0';
+  ctx.beginPath(); ctx.arc(x, y + 18, 8, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  // isim
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.85)';
+  ctx.font = 'bold 12px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(label, x, y + 58);
+  ctx.restore();
+}
+
+function drawBall() {
+  if (state === 'menu') return;
+  const bx = ball.x, by = ball.y - ball.z;
+  // gölge
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = '#000';
+  const sh = 1 - Math.min(0.7, ball.z / 200);
+  ctx.beginPath(); ctx.ellipse(ball.x, ball.y + 3, 10 * sh, 4.2 * sh, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  // top
+  const br = BALL_R * (1 + Math.min(0.8, ball.z / 260));
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.35)';
+  ctx.shadowBlur = 8;
+  ctx.shadowOffsetY = 2;
+  const g = ctx.createRadialGradient(bx - br * 0.35, by - br * 0.4, br * 0.15, bx, by, br);
+  g.addColorStop(0, '#f7ff9a');
+  g.addColorStop(0.6, '#e8ff3c');
+  g.addColorStop(1, '#b8d400');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  // dikiş
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.arc(bx, by, br * 0.72, -0.6, Math.PI * 1.1);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawEffects() {
+  // parçacıklar
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, p.t / p.life);
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  // yüzen yazılar
+  for (const f of floaters) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, f.t * 2);
+    ctx.fillStyle = f.color;
+    ctx.font = '900 22px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(f.text, f.x, f.y - (0.9 - f.t) * 34);
+    ctx.restore();
+  }
+  // flash
+  if (flash) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, flash.t * 1.6);
+    ctx.fillStyle = flash.color;
+    ctx.font = '900 34px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 12;
+    ctx.fillText(flash.text, 450, 286);
+    ctx.restore();
+  }
+  // servis göstergesi
+  if (state === 'serve' && serveTimer > 0) {
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = '#ffd166';
+    ctx.font = '900 26px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('SERVE ' + Math.ceil(serveTimer * 3) / 3, 450, 250);
+    ctx.restore();
+  }
+  // pause
+  if (state === 'paused' || adPlaying) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#e8f0ff';
+    ctx.font = '900 44px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(adPlaying ? 'AD…' : '⏸ PAUSED', 450, 300);
+    ctx.restore();
+  }
+}
+
+function draw() {
+  ctx.save();
+  if (shake > 0) ctx.translate(rand(-shake, shake), rand(-shake, shake));
+  drawCourt();
+  drawBall();
+  drawRacket(ai.x, ai.y, '#ff6b6b', ai.swing, 'CPU');
+  drawRacket(player.x, player.y, '#4cc9f0', player.swing, 'YOU');
+  drawEffects();
+  ctx.restore();
+}
+
+/* ═══════════ DÖNGÜ ═══════════ */
+function loop(ts) {
+  const dt = Math.min(0.033, (ts - lastTime) / 1000 || 0.016);
+  lastTime = ts;
+  if (!adPlaying) update(dt);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+/* ═══════════ GİRDİ ═══════════ */
+function canvasPos(e) {
+  const r = canvas.getBoundingClientRect();
+  const cx = (e.touches ? e.touches[0].clientX : e.clientX);
+  const cy = (e.touches ? e.touches[0].clientY : e.clientY);
+  return { x: (cx - r.left) / r.width * W, y: (cy - r.top) / r.height * H };
+}
+canvas.addEventListener('pointermove', (e) => {
+  if (state !== 'rally' && state !== 'serve') return;
+  const p = canvasPos(e);
+  pointerActive = true;
+  pointerX = p.x; pointerY = p.y;
+});
+canvas.addEventListener('pointerdown', (e) => {
+  if (state !== 'rally' && state !== 'serve') return;
+  initAudio();
+  const p = canvasPos(e);
+  pointerActive = true;
+  pointerX = p.x; pointerY = p.y;
+});
+canvas.addEventListener('pointerleave', () => { pointerActive = false; });
+window.addEventListener('keydown', (e) => {
+  keys[e.key] = true;
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
+  pointerActive = false;
+});
+window.addEventListener('keyup', (e) => { keys[e.key] = false; });
+
+/* ═══════════ MENÜ & KONTROLLER ═══════════ */
+function buildDiffUI() {
+  const row = $('diffRow');
+  row.innerHTML = '';
+  DIFFS.forEach((d, i) => {
+    const b = document.createElement('button');
+    b.className = 'diffBtn' + (i === diffIndex ? ' on' : '');
+    b.textContent = (i + 1) + ' ' + d.name.split('· ')[1];
+    b.addEventListener('click', () => {
+      diffIndex = i;
+      buildDiffUI();
+      beep(520, 0.06, 'sine', 0.04);
+    });
+    row.appendChild(b);
+  });
+  $('diffLbl').textContent = DIFFS[diffIndex].name + ' — CPU speed ' + DIFFS[diffIndex].speed + ' · aim error ±' + DIFFS[diffIndex].err;
+}
+function saveBest() {
+  try { localStorage.setItem('taBestRally', bestRally); } catch (e) {}
+}
+function loadBest() {
+  try { bestRally = +localStorage.getItem('taBestRally') || 0; } catch (e) { bestRally = 0; }
+  if (bestRally > 0) $('menuBest').textContent = '🏆 Best rally: ' + bestRally + ' hits';
+}
+
+$('playBtn').addEventListener('click', () => startMatch(0));
+$('againBtn').addEventListener('click', () => startMatch(0));
+$('startAdBtn').addEventListener('click', () => {
+  if (startBonusUsed) return;
+  const ok = requestAd('rewarded', (err) => {
+    if (err) return;
+    startBonusUsed = true;
+    $('startAdBtn').style.display = 'none';
+    startMatch(2);
+  });
+  if (!ok) { /* reklam yoksa sessiz */ }
+});
+$('rematchAdBtn').addEventListener('click', () => {
+  if (rematchBonusUsed) return;
+  const ok = requestAd('rewarded', (err) => {
+    if (err) return;
+    rematchBonusUsed = true;
+    $('rematchAdBtn').style.display = 'none';
+    startMatch(2);
+  });
+});
+$('pauseBtn').addEventListener('click', () => {
+  if (state === 'rally' || state === 'serve' || state === 'point') {
+    prevState = state;
+    state = 'paused';
+    gameplayStop();
+    $('pauseBtn').textContent = '▶';
+  } else if (state === 'paused') {
+    state = prevState;
+    gameplayStart();
+    $('pauseBtn').textContent = '⏸';
+  }
+});
+
+/* ═══════════ BAŞLAT ═══════════ */
+buildDiffUI();
+loadBest();
+updateScoreHUD();
+requestAnimationFrame(loop);
+initSDK();
+</script>
+</body>
+</html>
